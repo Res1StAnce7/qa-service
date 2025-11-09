@@ -1,0 +1,17 @@
+app_name: QA Service
+openai:
+  api_key: "sk-your-openai-key"
+  model: "gpt-5-mini-2025-08-07"
+  temperature: 0.1
+  max_output_tokens: 300
+  reasoning_effort: "medium"
+  verbosity: "medium"
+  embedding_model: "text-embedding-3-small"
+  embedding_batch_size: 50
+messages_api:
+  base_url: "https://november7-730026606190.europe-west1.run.app"
+  skip: 0
+  limit: 500
+  timeout_seconds: 10
+retrieval:
+  top_k: 8

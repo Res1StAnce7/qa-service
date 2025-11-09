@@ -1,0 +1,5 @@
+tests
+.venv
+app/__pycache__
+.DS_Store
+config/settings.yaml
