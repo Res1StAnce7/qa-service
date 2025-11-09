@@ -27,9 +27,7 @@ class LLMClient:
         self._settings = settings
         self._client = OpenAI(api_key=settings.api_key)
         self._system_prompt = (
-            "You are a meticulous concierge analyst. "
-            "Answer questions strictly using the provided member messages. "
-            "If the answer cannot be found, reply that the information is unavailable."
+            "Answer questions using only the provided member messages. If the answer is not present in the messages, reply that the information is unavailable."
         )
 
     def _invoke(self, question: str, context: str) -> str:

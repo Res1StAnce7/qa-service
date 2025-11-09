@@ -300,6 +300,60 @@ async def demo() -> HTMLResponse:
                     padding: 14px 16px;
                     border-radius: 12px;
                     line-height: 1.4;
+                    position: relative;
+                }}
+                .chat-log li p {{
+                    margin: 6px 0 0;
+                }}
+                .chat-log li .message-header {{
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    font-size: 0.78rem;
+                    letter-spacing: 0.04em;
+                    text-transform: uppercase;
+                    margin-bottom: 6px;
+                    opacity: 0.75;
+                }}
+                .chat-log li.question .message-header span {{
+                    color: #1e3a8a;
+                }}
+                .chat-log li.answer .message-header span {{
+                    color: #047857;
+                }}
+                .message-action {{
+                    border: none;
+                    background: transparent;
+                    color: #2563eb;
+                    font-weight: 600;
+                    font-size: 0.78rem;
+                    cursor: pointer;
+                }}
+                .message-action:hover {{
+                    text-decoration: underline;
+                }}
+                .message-action:disabled {{
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }}
+                .chat-log li.editing {{
+                    outline: 2px dashed rgba(37, 99, 235, 0.5);
+                    background: rgba(219, 234, 254, 0.7);
+                }}
+                .chat-log li.pending p::after {{
+                    content: '';
+                    display: inline-block;
+                    width: 30px;
+                    height: 0.8em;
+                    margin-left: 8px;
+                    border-radius: 999px;
+                    background: linear-gradient(90deg, rgba(37, 99, 235, 0.1), rgba(37, 99, 235, 0.4), rgba(37, 99, 235, 0.1));
+                    animation: shimmer 1.2s ease-in-out infinite;
+                }}
+                @keyframes shimmer {{
+                    0% {{ opacity: 0.2; }}
+                    50% {{ opacity: 1; }}
+                    100% {{ opacity: 0.2; }}
                 }}
                 .chat-log .question {{
                     align-self: flex-end;
@@ -312,14 +366,17 @@ async def demo() -> HTMLResponse:
                 }}
                 .input-row {{
                     display: flex;
-                    gap: 10px;
+                    gap: 12px;
+                    align-items: center;
                 }}
                 .input-row input {{
                     flex: 1;
-                    padding: 14px 16px;
-                    border-radius: 12px;
+                    height: 58px;
+                    padding: 0 18px;
+                    border-radius: 16px;
                     border: 1px solid var(--border);
                     font-size: 1rem;
+                    line-height: 1;
                     transition: border 0.2s, box-shadow 0.2s;
                 }}
                 .input-row input:focus {{
@@ -327,32 +384,97 @@ async def demo() -> HTMLResponse:
                     border-color: var(--primary);
                     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
                 }}
-                .input-row button {{
-                    padding: 0 20px;
+                .send-stop-button {{
+                    width: 58px;
+                    height: 58px;
+                    border-radius: 18px;
                     border: none;
-                    border-radius: 12px;
-                    background: var(--primary);
-                    color: white;
-                    font-weight: 600;
+                    padding: 0;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    position: relative;
+                    background: linear-gradient(145deg, #1f2937, #0b1221 65%);
+                    box-shadow: inset 0 2px 6px rgba(255, 255, 255, 0.25), inset 0 -6px 16px rgba(11, 17, 32, 0.9), 0 10px 25px rgba(15, 23, 42, 0.4);
                     cursor: pointer;
-                    transition: background 0.2s, transform 0.1s;
+                    transition: transform 0.15s ease, filter 0.2s ease;
                 }}
-                .input-row button:hover {{
-                    background: var(--primary-dark);
+                .send-stop-button::after {{
+                    content: '';
+                    position: absolute;
+                    inset: 5px;
+                    border-radius: 14px;
+                    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.35), rgba(15,23,42,0.85));
+                    pointer-events: none;
+                    z-index: 0;
                 }}
-                .input-row button:active {{
+                .send-stop-button:hover {{
+                    filter: brightness(1.05);
+                }}
+                .send-stop-button:active {{
                     transform: translateY(1px);
                 }}
-                .input-row button:disabled {{
-                    opacity: 0.6;
-                    cursor: not-allowed;
-                    transform: none;
+                .send-stop-button[data-mode="stop"] {{
+                    background: linear-gradient(145deg, #7f1d1d, #450a0a 70%);
+                    box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.25), inset 0 -6px 18px rgba(69, 10, 10, 0.85), 0 10px 25px rgba(185, 28, 28, 0.35);
+                }}
+                .send-stop-button[data-mode="stop"]::after {{
+                    background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.3), rgba(120, 15, 15, 0.9));
+                }}
+                .send-stop-button .icon {{
+                    width: 22px;
+                    height: 22px;
+                    fill: #f8fafc;
+                    opacity: 0;
+                    transform: scale(0.6);
+                    transition: opacity 0.12s ease, transform 0.18s ease;
+                    position: relative;
+                    z-index: 1;
+                    display: block;
+                    margin: 0;
+                }}
+                .send-stop-button[data-mode="send"] .icon-send,
+                .send-stop-button[data-mode="stop"] .icon-stop {{
+                    opacity: 1;
+                    transform: scale(1);
                 }}
                 .status {{
                     min-height: 22px;
                     color: #475569;
                     margin-top: 10px;
                     font-size: 0.95rem;
+                }}
+                .status-row {{
+                    display: flex;
+                    gap: 12px;
+                    align-items: center;
+                    justify-content: space-between;
+                    flex-wrap: wrap;
+                }}
+                .link-button {{
+                    border: none;
+                    background: transparent;
+                    color: var(--primary);
+                    font-weight: 600;
+                    cursor: pointer;
+                    padding: 0;
+                }}
+                .link-button:hover {{
+                    text-decoration: underline;
+                }}
+                .link-button[hidden] {{
+                    display: none;
+                }}
+                .sr-only {{
+                    position: absolute;
+                    width: 1px;
+                    height: 1px;
+                    padding: 0;
+                    margin: -1px;
+                    overflow: hidden;
+                    clip: rect(0, 0, 0, 0);
+                    white-space: nowrap;
+                    border: 0;
                 }}
                 .status-secondary {{
                     margin-top: 8px;
@@ -428,9 +550,23 @@ async def demo() -> HTMLResponse:
                     <form id="ask-form" class="input-row">
                         <input id="question-input" type="text" placeholder="Ask anything about the members..."
                             autocomplete="off" />
-                        <button type="submit">Ask</button>
+                        <button id="send-stop-button" class="send-stop-button" type="submit" data-mode="send"
+                            data-intent="send" aria-label="Send question">
+                            <span class="sr-only">Send</span>
+                            <svg class="icon icon-send" viewBox="0 0 24 24" aria-hidden="true" focusable="false"
+                                preserveAspectRatio="xMidYMid meet">
+                                <path d="M12 4l-6 6h4v10h4V10h4z" />
+                            </svg>
+                            <svg class="icon icon-stop" viewBox="0 0 24 24" aria-hidden="true" focusable="false"
+                                preserveAspectRatio="xMidYMid meet">
+                                <path d="M7 7h10v10H7z" />
+                            </svg>
+                        </button>
                     </form>
-                    <div id="status" class="status">Ready.</div>
+                    <div class="status-row">
+                        <div id="status" class="status">Ready. Stop a response to branch or edit earlier prompts.</div>
+                        <button type="button" id="cancel-edit" class="link-button" hidden>Cancel edit</button>
+                    </div>
                 </div>
                 <div class="panel messages-panel">
                     <h2>Latest Member Messages</h2>
@@ -445,25 +581,165 @@ async def demo() -> HTMLResponse:
                 const askForm = document.getElementById('ask-form');
                 const statusNode = document.getElementById('status');
                 const messagesList = document.getElementById('messages-list');
-                const askButton = askForm.querySelector('button');
+                const sendStopButton = document.getElementById('send-stop-button');
+                const sendStopButtonLabel = sendStopButton.querySelector('.sr-only');
+                const cancelEditButton = document.getElementById('cancel-edit');
                 const showMoreButton = document.getElementById('show-more');
                 const messagesStatus = document.getElementById('messages-status');
                 const PAGE_SIZE = {MESSAGE_LIST_LIMIT};
                 const MAX_LIMIT = {MAX_MESSAGE_LIMIT};
                 let currentLimit = PAGE_SIZE;
                 let lastRenderedCount = 0;
+                let conversation = [];
+                let nextMessageId = 1;
+                let editingMessageId = null;
+                let activeRequest = null;
 
-                function addChatBubble(text, role) {{
-                    const li = document.createElement('li');
-                    li.classList.add(role);
-                    li.textContent = text;
-                    chatLog.appendChild(li);
+                function renderConversation() {{
+                    chatLog.innerHTML = '';
+                    conversation.forEach((entry) => {{
+                        const li = document.createElement('li');
+                        li.dataset.id = entry.id;
+                        li.classList.add(entry.role === 'user' ? 'question' : 'answer');
+                        if (entry.pending) {{
+                            li.classList.add('pending');
+                        }}
+                        if (entry.id === editingMessageId) {{
+                            li.classList.add('editing');
+                        }}
+
+                        const header = document.createElement('div');
+                        header.className = 'message-header';
+                        const label = document.createElement('span');
+                        label.textContent = entry.role === 'user' ? 'You' : 'Assistant';
+                        header.appendChild(label);
+
+                        if (entry.role === 'user') {{
+                            const actionButton = document.createElement('button');
+                            actionButton.type = 'button';
+                            actionButton.className = 'message-action';
+                            actionButton.textContent = entry.id === editingMessageId ? 'Editing…' : 'Edit';
+                            actionButton.disabled = entry.id === editingMessageId;
+                            actionButton.addEventListener('click', () => enterEditMode(entry.id));
+                            header.appendChild(actionButton);
+                        }} else if (entry.pending) {{
+                            const state = document.createElement('span');
+                            state.textContent = 'Generating…';
+                            header.appendChild(state);
+                        }}
+
+                        li.appendChild(header);
+                        const body = document.createElement('p');
+                        body.textContent = entry.content;
+                        li.appendChild(body);
+                        chatLog.appendChild(li);
+                    }});
                     chatLog.scrollTop = chatLog.scrollHeight;
                 }}
 
-                async function askQuestion(question) {{
+                function updateSendIntentLabel() {{
+                    if (activeRequest) {{
+                        return;
+                    }}
+                    const label = editingMessageId ? 'Resend edited question' : 'Send question';
+                    sendStopButton.dataset.intent = editingMessageId ? 'resend' : 'send';
+                    sendStopButton.setAttribute('aria-label', label);
+                    sendStopButtonLabel.textContent = label;
+                }}
+
+                function enterEditMode(messageId) {{
+                    const entry = conversation.find((msg) => msg.id === messageId && msg.role === 'user');
+                    if (!entry) {{
+                        return;
+                    }}
+                    if (activeRequest) {{
+                        stopActiveRequest();
+                    }}
+                    editingMessageId = messageId;
+                    questionInput.value = entry.content;
+                    questionInput.focus();
+                    cancelEditButton.hidden = false;
+                    statusNode.textContent = 'Editing previous question. Sending will discard replies after it.';
+                    updateSendIntentLabel();
+                    renderConversation();
+                }}
+
+                function exitEditMode({{ silent = false }} = {{}}) {{
+                    editingMessageId = null;
+                    cancelEditButton.hidden = true;
+                    if (!silent && !activeRequest) {{
+                        statusNode.textContent = 'Ready.';
+                    }}
+                    updateSendIntentLabel();
+                    renderConversation();
+                }}
+
+                cancelEditButton.addEventListener('click', () => {{
+                    questionInput.value = '';
+                    exitEditMode();
+                }});
+
+                function updateMessage(messageId, updates) {{
+                    const index = conversation.findIndex((msg) => msg.id === messageId);
+                    if (index === -1) {{
+                        return;
+                    }}
+                    conversation[index] = {{ ...conversation[index], ...updates }};
+                    renderConversation();
+                }}
+
+                function buildConversationFor(question) {{
+                    if (editingMessageId !== null) {{
+                        const editIndex = conversation.findIndex((msg) => msg.id === editingMessageId);
+                        if (editIndex !== -1) {{
+                            conversation[editIndex].content = question;
+                            conversation = conversation.slice(0, editIndex + 1);
+                        }}
+                        exitEditMode({{ silent: true }});
+                        return;
+                    }}
+                    conversation.push({{ id: nextMessageId++, role: 'user', content: question }});
+                    renderConversation();
+                }}
+
+                function addAssistantPlaceholder() {{
+                    const message = {{ id: nextMessageId++, role: 'assistant', content: 'Thinking...', pending: true }};
+                    conversation.push(message);
+                    renderConversation();
+                    return message.id;
+                }}
+
+                function setRequestState(isActive) {{
+                    if (isActive) {{
+                        sendStopButton.dataset.mode = 'stop';
+                        sendStopButton.type = 'button';
+                        sendStopButton.setAttribute('aria-label', 'Stop response');
+                        sendStopButtonLabel.textContent = 'Stop response';
+                    }} else {{
+                        sendStopButton.dataset.mode = 'send';
+                        sendStopButton.type = 'submit';
+                        updateSendIntentLabel();
+                    }}
+                }}
+
+                function stopActiveRequest() {{
+                    if (!activeRequest) {{
+                        return;
+                    }}
+                    activeRequest.controller.abort();
+                    statusNode.textContent = 'Stopping response...';
+                }}
+
+                sendStopButton.addEventListener('click', (event) => {{
+                    if (sendStopButton.dataset.mode === 'stop') {{
+                        event.preventDefault();
+                        stopActiveRequest();
+                    }}
+                }});
+
+                async function askQuestion(question, signal) {{
                     const url = `/ask?question=${{encodeURIComponent(question)}}`;
-                    const response = await fetch(url);
+                    const response = await fetch(url, {{ signal }});
                     if (!response.ok) {{
                         const data = await response.json().catch(() => ({{ detail: response.statusText }}));
                         throw new Error(data.detail || 'Failed to retrieve answer.');
@@ -495,7 +771,7 @@ async def demo() -> HTMLResponse:
                         updateShowMoreState(items.length);
                         messagesStatus.textContent = '';
                     }} catch (error) {{
-                        messagesList.innerHTML = `<p style=\"color:#b91c1c;\">Unable to load messages: ${{error.message}}</p>`;
+                        messagesList.innerHTML = `<p style="color:#b91c1c;">Unable to load messages: ${{error.message}}</p>`;
                         messagesStatus.textContent = 'Unable to load messages right now.';
                         showMoreButton.disabled = true;
                     }}
@@ -539,25 +815,53 @@ async def demo() -> HTMLResponse:
                         statusNode.textContent = 'Enter a question first.';
                         return;
                     }}
+                    if (activeRequest) {{
+                        statusNode.textContent = 'Stop the current response before sending another prompt.';
+                        return;
+                    }}
+                    buildConversationFor(question);
                     questionInput.value = '';
                     questionInput.focus();
-                    addChatBubble(question, 'question');
+
+                    const assistantId = addAssistantPlaceholder();
+                    const controller = new AbortController();
+                    activeRequest = {{ controller, assistantId }};
+                    setRequestState(true);
                     statusNode.textContent = 'Thinking...';
-                    askButton.disabled = true;
+
                     try {{
-                        const result = await askQuestion(question);
-                        addChatBubble(result.answer, 'answer');
+                        const result = await askQuestion(question, controller.signal);
+                        updateMessage(assistantId, {{ content: result.answer, pending: false }});
                         statusNode.textContent = `Used ${{result.sources_used}} messages.`;
                     }} catch (error) {{
-                        addChatBubble(`Error: ${{error.message}}`, 'answer');
-                        statusNode.textContent = 'Unable to fetch answer.';
+                        if (error.name === 'AbortError') {{
+                            updateMessage(assistantId, {{ content: 'Response stopped.', pending: false }});
+                            statusNode.textContent = 'Response stopped.';
+                        }} else {{
+                            updateMessage(assistantId, {{ content: `Error: ${{error.message}}`, pending: false }});
+                            statusNode.textContent = 'Unable to fetch answer.';
+                        }}
                     }} finally {{
-                        askButton.disabled = false;
+                        if (activeRequest && activeRequest.assistantId === assistantId) {{
+                            activeRequest = null;
+                            setRequestState(false);
+                            if (!editingMessageId && !['Response stopped.', 'Unable to fetch answer.'].includes(statusNode.textContent) && !statusNode.textContent.startsWith('Used ')) {{
+                                statusNode.textContent = 'Ready.';
+                            }}
+                        }}
                     }}
                 }});
 
+                questionInput.addEventListener('keydown', (event) => {{
+                    if (event.key === 'Escape' && !cancelEditButton.hidden) {{
+                        cancelEditButton.click();
+                    }}
+                }});
+
+                updateSendIntentLabel();
                 loadMessages();
             </script>
+
         </body>
     </html>
     """
