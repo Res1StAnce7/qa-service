@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response, RedirectResponse
@@ -23,11 +24,18 @@ qa_service = QAService(
     embeddings_client,
     llm_client,
     retrieval_top_k=settings.retrieval.top_k,
+    message_cache_limit=settings.messages_api.limit,
 )
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await qa_service.warm_cache()
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 MESSAGE_LIST_LIMIT = 50
-MAX_MESSAGE_LIMIT = min(1000, settings.messages_api.limit)
 
 
 def _serialize_message(record: MessageRecord) -> MessageSchema:
@@ -70,27 +78,6 @@ async def home() -> HTMLResponse:
                     margin-top: 16px;
                     font-size: 1.2rem;
                     opacity: 0.9;
-                }}
-                .cta-row {{
-                    margin-top: 32px;
-                    display: flex;
-                    justify-content: center;
-                    gap: 16px;
-                }}
-                .cta {{
-                    padding: 14px 26px;
-                    border-radius: 999px;
-                    border: none;
-                    background: #fff;
-                    color: #1d4ed8;
-                    font-weight: 600;
-                    text-decoration: none;
-                    box-shadow: 0 10px 20px rgba(15, 23, 42, 0.15);
-                }}
-                .cta.secondary {{
-                    background: rgba(255,255,255,0.15);
-                    color: #fff;
-                    border: 1px solid rgba(255,255,255,0.3);
                 }}
                 main {{
                     padding: 40px;
@@ -144,23 +131,9 @@ async def home() -> HTMLResponse:
             <header>
                 <h1>{settings.app_name}</h1>
                 <p>Concierge-grade Q&A on top of the member message stream. Ask, explore, or plug it into your own workflows.</p>
-                <div class="cta-row">
-                    <a class="cta" href="/ask?question=What%20are%20Amira's%20favorite%20restaurants?">Quick Ask</a>
-                    <a class="cta secondary" href="/demo">Interactive Demo</a>
-                </div>
             </header>
             <main>
                 <section class="card-grid">
-                    <div class="card">
-                        <h3>Ask Endpoint</h3>
-                        <p>Call <code>/ask?question=...</code> for instantaneous answers grounded in the latest concierge messages.</p>
-                        <a href="/ask?question=Who%20needs%20a%20payment%20check">Try sample query →</a>
-                    </div>
-                    <div class="card">
-                        <h3>Message Explorer</h3>
-                        <p>Use <code>/messages?limit=50</code> to fetch the raw feed and plug it into your own tooling.</p>
-                        <a href="/messages">View messages →</a>
-                    </div>
                     <div class="card">
                         <h3>Live Demo</h3>
                         <p>The split-screen UI shows the chat interface alongside the retrieved snippets powering each answer.</p>
@@ -239,6 +212,11 @@ async def _answer_question(question: str) -> AnswerResponse:
 
 @app.get("/demo", response_class=HTMLResponse)
 async def demo() -> HTMLResponse:
+    cached_messages = await qa_service.get_cached_messages()
+    serialized_cache = [
+        _serialize_message(record).model_dump(mode="json") for record in cached_messages
+    ]
+    safe_cache_json = json.dumps(serialized_cache).replace("</", "<\\/")
     html = f"""
     <html>
         <head>
@@ -586,9 +564,11 @@ async def demo() -> HTMLResponse:
                 const cancelEditButton = document.getElementById('cancel-edit');
                 const showMoreButton = document.getElementById('show-more');
                 const messagesStatus = document.getElementById('messages-status');
+                const cachedMessages = {safe_cache_json};
+                const totalCached = cachedMessages.length;
                 const PAGE_SIZE = {MESSAGE_LIST_LIMIT};
-                const MAX_LIMIT = {MAX_MESSAGE_LIMIT};
-                let currentLimit = PAGE_SIZE;
+                const MAX_LIMIT = totalCached;
+                let currentLimit = totalCached ? Math.min(PAGE_SIZE, totalCached) : 0;
                 let lastRenderedCount = 0;
                 let conversation = [];
                 let nextMessageId = 1;
@@ -748,39 +728,41 @@ async def demo() -> HTMLResponse:
                 }}
 
                 async function loadMessages({{ showSpinner = false }} = {{}}) {{
-                    if (showSpinner) {{
-                        messagesStatus.textContent = 'Loading more messages...';
-                    }} else if (!lastRenderedCount) {{
-                        messagesStatus.textContent = 'Loading messages...';
-                    }}
-                    try {{
-                        const response = await fetch(`/messages?limit=${{currentLimit}}`);
-                        if (!response.ok) {{
-                            throw new Error('Failed to load messages');
-                        }}
-                        const items = await response.json();
-                        messagesList.innerHTML = items.map(item => `
-                            <div class="message-card">
-                                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
-                                    <strong>${{item.user_name}}</strong>
-                                    <time style="font-size:0.85rem;color:#94a3b8;">${{new Date(item.timestamp).toLocaleString()}}</time>
-                                </div>
-                                <p>${{item.message}}</p>
-                            </div>
-                        `).join('');
-                        updateShowMoreState(items.length);
-                        messagesStatus.textContent = '';
-                    }} catch (error) {{
-                        messagesList.innerHTML = `<p style="color:#b91c1c;">Unable to load messages: ${{error.message}}</p>`;
-                        messagesStatus.textContent = 'Unable to load messages right now.';
+                    if (!totalCached) {{
+                        messagesList.innerHTML = '<p style="color:#64748b;">No cached messages are available yet.</p>';
                         showMoreButton.disabled = true;
+                        messagesStatus.textContent = 'Messages will appear once the cache is populated.';
+                        return;
                     }}
+
+                    if (showSpinner) {{
+                        messagesStatus.textContent = 'Loading cached messages...';
+                    }} else if (!lastRenderedCount) {{
+                        messagesStatus.textContent = 'Rendering cached messages...';
+                    }}
+
+                    const sliceEnd = Math.min(currentLimit, totalCached);
+                    const items = cachedMessages.slice(0, sliceEnd);
+                    messagesList.innerHTML = items.map(item => `
+                        <div class="message-card">
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                                <strong>${{item.user_name}}</strong>
+                                <time style="font-size:0.85rem;color:#94a3b8;">${{new Date(item.timestamp).toLocaleString()}}</time>
+                            </div>
+                            <p>${{item.message}}</p>
+                        </div>
+                    `).join('');
+                    updateShowMoreState(items.length);
+                    messagesStatus.textContent = '';
                 }}
 
                 function updateShowMoreState(renderedCount) {{
                     const previouslyRendered = lastRenderedCount;
                     lastRenderedCount = renderedCount;
-                    const cannotGrow = currentLimit >= MAX_LIMIT || renderedCount < currentLimit;
+                    const cannotGrow =
+                        MAX_LIMIT === 0 ||
+                        currentLimit >= MAX_LIMIT ||
+                        renderedCount >= totalCached;
                     if (cannotGrow) {{
                         showMoreButton.disabled = true;
                         showMoreButton.textContent = 'No more messages';

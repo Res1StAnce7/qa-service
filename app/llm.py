@@ -27,7 +27,13 @@ class LLMClient:
         self._settings = settings
         self._client = OpenAI(api_key=settings.api_key)
         self._system_prompt = (
-            "Answer questions using only the provided member messages. If the answer is not present in the messages, reply that the information is unavailable. Do not answer with information not relevant to the query."
+            "You are a factual question-answering assistant. "
+            "Use only the provided member messages to answer each question.\n\n"
+            "If the information is not explicitly stated or cannot be reasonably inferred "
+            "from the messages, reply exactly with: 'The information is unavailable.'\n\n"
+            "Do not include or speculate about information outside the provided messages.\n\n"
+            "Ensure the response is concise, relevant, and well-formatted for readability "
+            "(e.g., use bullet points or short paragraphs when appropriate)."
         )
 
     def _invoke(self, question: str, context: str) -> str:
