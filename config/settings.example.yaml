@@ -11,7 +11,7 @@ openai:
 messages_api:
   base_url: "https://november7-730026606190.europe-west1.run.app"
   skip: 0
-  limit: 500
+  limit: 1000
   timeout_seconds: 10
 retrieval:
   top_k: 8
