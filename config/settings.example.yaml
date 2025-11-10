@@ -1,3 +1,6 @@
+app:
+  name: QA Service
+  public_base_url: " "
 app_name: QA Service
 openai:
   api_key: "sk-your-openai-key"

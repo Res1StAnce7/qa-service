@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import asyncio
-import math
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence
 
+import numpy as np
 from openai import OpenAI
 
 from .config import OpenAISettings
@@ -63,21 +63,21 @@ def _chunk(items: Sequence[str], size: int) -> Iterable[Sequence[str]]:
 
 
 def cosine_similarity(vector_a: Sequence[float], vector_b: Sequence[float]) -> float:
-    """Compute cosine similarity between two vectors."""
+    """Compute cosine similarity between two vectors using NumPy."""
 
-    if len(vector_a) != len(vector_b):
+    a = np.asarray(vector_a, dtype=float)
+    b = np.asarray(vector_b, dtype=float)
+    if a.shape != b.shape:
         raise ValueError("Vectors must be the same length for cosine similarity")
 
-    numerator = 0.0
-    sum_a = 0.0
-    sum_b = 0.0
-    for a, b in zip(vector_a, vector_b):
-        numerator += a * b
-        sum_a += a * a
-        sum_b += b * b
+    if a.size == 0:
+        return 0.0
 
-    denominator = math.sqrt(sum_a) * math.sqrt(sum_b)
-    if denominator == 0:
+    numerator = float(np.dot(a, b))
+    norm_a = float(np.linalg.norm(a))
+    norm_b = float(np.linalg.norm(b))
+    denominator = norm_a * norm_b
+    if denominator == 0.0:
         return 0.0
     return numerator / denominator
 

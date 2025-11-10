@@ -12,6 +12,20 @@ class AnswerResponse(BaseModel):
     sources_used: int = Field(..., description="Number of upstream messages provided to the LLM")
 
 
+class AskRequest(BaseModel):
+    """Inbound payload for POST /ask."""
+
+    question: str = Field(
+        ...,
+        min_length=1,
+        description="Natural language question to answer.",
+    )
+    reasoning_effort: str | None = Field(
+        default=None,
+        description="Optional reasoning setting (minimal|low|medium|high).",
+    )
+
+
 class MessageSchema(BaseModel):
     """Public message payload returned by /messages."""
 

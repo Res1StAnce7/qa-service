@@ -35,7 +35,9 @@ class LLMClient:
             "Ensure the response is concise, relevant, and well-formatted for readability "
         )
 
-    def _invoke(self, question: str, context: str, reasoning_effort: str | None) -> str:
+    def _invoke(
+        self, question: str, context: str, reasoning_effort: str | None = None
+    ) -> str:
         effort = reasoning_effort or self._settings.reasoning_effort
         completion = self._client.responses.create(
             model=self._settings.model,

@@ -11,7 +11,7 @@ from .config import load_settings
 from .embeddings import EmbeddingsClient
 from .llm import LLMClient
 from .message_client import MessageRecord, MessagesClient
-from .schemas import AnswerResponse, MessageSchema
+from .schemas import AnswerResponse, AskRequest, MessageSchema
 from .service import QAService
 
 
@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app = FastAPI(title=settings.app.name, lifespan=lifespan)
 MESSAGE_LIST_LIMIT = 50
 REASONING_CHOICES = {"minimal", "low", "medium", "high"}
 
@@ -54,9 +54,20 @@ async def root_redirect():
 
 @app.get("/home", response_class=HTMLResponse)
 async def home() -> HTMLResponse:
+    base_url = settings.app.public_base_url.rstrip("/")
+    get_usage_cmd = (
+        f'curl "{base_url}/ask?question=Who%20needs%20help&reasoning_effort=low"'
+    )
+    post_usage_cmd = (
+        f"curl -X POST {base_url}/ask "
+        '-H "Content-Type: application/json" '
+        '-d \'{{"question":"Who needs help?","reasoning_effort":"low"}}\''
+    )
+    get_usage_html = get_usage_cmd.replace("&", "&amp;")
+    post_usage_html = post_usage_cmd.replace("&", "&amp;")
     html = f"""
     <html>
-        <head><title>{settings.app_name}</title></head>
+        <head><title>{settings.app.name}</title></head>
         <body>
             <style>
                 body {{
@@ -130,14 +141,14 @@ async def home() -> HTMLResponse:
                 }}
             </style>
             <header>
-                <h1>{settings.app_name}</h1>
-                <p>Concierge-grade Q&A on top of the member message stream. Ask, explore, or plug it into your own workflows.</p>
+                <h1>{settings.app.name}</h1>
+                <p>Concierge-grade Q&A on top of the member message stream.</p>
             </header>
             <main>
                 <section class="card-grid">
                     <div class="card">
                         <h3>Live Demo</h3>
-                        <p>The split-screen UI shows the chat interface alongside the retrieved snippets powering each answer.</p>
+                        <p>Try the split-screen UI to see prompts, responses, cached snippets, and reasoning-effort controls.</p>
                         <a href="/demo">Open demo →</a>
                     </div>
                 </section>
@@ -145,19 +156,22 @@ async def home() -> HTMLResponse:
                 <section class="section">
                     <h2>Endpoint Directory</h2>
                     <table>
-                        <tr><th>Method</th><th>Path</th><th>Description</th></tr>
-                        <tr><td>GET</td><td>/ask</td><td>Primary question-answering endpoint (query parameter <code>question=</code>).</td></tr>
-                        <tr><td>GET</td><td>/messages</td><td>Paginated member messages with optional <code>?limit=</code>.</td></tr>
-                        <tr><td>GET</td><td>/demo</td><td>Interactive chat + context viewer.</td></tr>
-                        <tr><td>GET</td><td>/home</td><td>This overview page.</td></tr>
+                        <tr><th>Method</th><th>Path</th><th>Description</th><th>Usage</th></tr>
+                        <tr>
+                            <td>GET</td>
+                            <td>/ask</td>
+                            <td>Primary Q&A endpoint. Query parameters: <code>question</code> (required) and <code>reasoning_effort</code> (minimal | low | medium | high).</td>
+                            <td><code>{get_usage_html}</code></td>
+                        </tr>
+                        <tr>
+                            <td>POST</td>
+                            <td>/ask</td>
+                            <td>JSON body fields: <code>question</code> (required) plus optional <code>reasoning_effort</code> (minimal | low | medium | high).</td>
+                            <td><code>{post_usage_html}</code></td>
+                        </tr>
                     </table>
                 </section>
 
-                <section class="section">
-                    <h2>Quick Start</h2>
-                    <p>Ask a question directly from your terminal:</p>
-<code>curl "http://localhost:8000/ask?question=Who%20needs%20payment%20help%3F"</code>
-                </section>
             </main>
         </body>
     </html>
@@ -189,14 +203,22 @@ async def list_messages(
 @app.get("/ask", response_model=AnswerResponse)
 async def ask(
     question: str = Query(..., min_length=1, description="Natural language question"),
-    reasoning: str
+    reasoning_effort: str
     | None = Query(
         default=None,
+        alias="reasoning_effort",
         description="Optional reasoning effort override (minimal|low|medium|high).",
     ),
 ) -> AnswerResponse:
     normalized = _normalize_question(question)
-    effort = _normalize_reasoning(reasoning)
+    effort = _normalize_reasoning(reasoning_effort)
+    return await _answer_question(normalized, effort)
+
+
+@app.post("/ask", response_model=AnswerResponse)
+async def ask_post(payload: AskRequest) -> AnswerResponse:
+    normalized = _normalize_question(payload.question)
+    effort = _normalize_reasoning(payload.reasoning_effort)
     return await _answer_question(normalized, effort)
 
 
@@ -247,7 +269,7 @@ async def demo() -> HTMLResponse:
     html = f"""
     <html>
         <head>
-            <title>{settings.app_name} Demo</title>
+            <title>{settings.app.name} Demo</title>
             <style>
                 :root {{
                     color-scheme: light;
@@ -713,7 +735,7 @@ async def demo() -> HTMLResponse:
                     </div>
                     <ul id="chat-log" class="chat-log"></ul>
                     <form id="ask-form" class="input-row">
-                        <input id="question-input" type="text" placeholder="Ask anything about the members..."
+                        <input id="question-input" type="text" placeholder="Ask anything about the members"
                             autocomplete="off" />
                         <button id="send-stop-button" class="send-stop-button" type="submit" data-mode="send"
                             data-intent="send" aria-label="Send question">
@@ -734,7 +756,7 @@ async def demo() -> HTMLResponse:
                     </div>
                 </div>
                 <div class="panel messages-panel">
-                    <h2>Latest Member Messages</h2>
+                    <h2>Member Messages</h2>
                     <div id="messages-list">Loading messages...</div>
                     <button id="show-more" class="secondary-btn">Show more</button>
                     <div id="messages-status" class="status status-secondary"></div>

@@ -48,10 +48,20 @@ class RetrievalSettings(BaseModel):
     top_k: int = Field(8, ge=1, le=100, description="Messages to feed into the LLM")
 
 
+class AppSettings(BaseModel):
+    """Application-level metadata."""
+
+    name: str = Field("QA Service", description="Human-readable service name")
+    public_base_url: str = Field(
+        "http://localhost:8000",
+        description="External URL used for documentation/examples.",
+    )
+
+
 class Settings(BaseModel):
     """Top-level application settings loaded from a YAML config file."""
 
-    app_name: str = "QA Service"
+    app: AppSettings = Field(default_factory=AppSettings)
     openai: OpenAISettings
     messages_api: MessagesAPISettings
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings) # type: ignore
@@ -98,6 +108,7 @@ def load_settings(path: str | os.PathLike[str] | None = None, *, force_reload: b
 
 __all__ = [
     "Settings",
+    "AppSettings",
     "OpenAISettings",
     "MessagesAPISettings",
     "RetrievalSettings",
