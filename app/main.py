@@ -36,7 +36,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app.name, lifespan=lifespan)
 MESSAGE_LIST_LIMIT = 50
-REASONING_CHOICES = {"minimal", "low", "medium", "high"}
+REASONING_CHOICES = ("minimal", "low", "medium", "high")
+REASONING_CHOICE_SET = set(REASONING_CHOICES)
 
 
 def _serialize_message(record: MessageRecord) -> MessageSchema:
@@ -61,7 +62,7 @@ async def home() -> HTMLResponse:
     post_usage_cmd = (
         f"curl -X POST {base_url}/ask "
         '-H "Content-Type: application/json" '
-        '-d \'{{"question":"Who needs help?","reasoning_effort":"low"}}\''
+        '-d \'{"question":"Who needs help?","reasoning_effort":"low"}\''
     )
     get_usage_html = get_usage_cmd.replace("&", "&amp;")
     post_usage_html = post_usage_cmd.replace("&", "&amp;")
@@ -247,12 +248,12 @@ def _normalize_reasoning(value: str | None) -> str | None:
     if value is None:
         return None
     lowered = value.lower()
-    if lowered not in REASONING_CHOICES:
+    if lowered not in REASONING_CHOICE_SET:
         raise HTTPException(
             status_code=422,
             detail=(
                 f"Invalid reasoning effort '{value}'. "
-                f"Choose from {', '.join(sorted(REASONING_CHOICES))}."
+                f"Choose from {', '.join(REASONING_CHOICES)}."
             ),
         )
     return lowered
@@ -265,7 +266,12 @@ async def demo() -> HTMLResponse:
         _serialize_message(record).model_dump(mode="json") for record in cached_messages
     ]
     safe_cache_json = json.dumps(serialized_cache).replace("</", "<\\/")
-    default_reasoning = settings.openai.reasoning_effort.capitalize()
+    default_reasoning_value = settings.openai.reasoning_effort.lower()
+    default_reasoning_label = default_reasoning_value.capitalize()
+    reasoning_options_html = "\n".join(
+        f"""                                    <li><button type="button" class="reasoning-option{' active' if choice == default_reasoning_value else ''}" data-value="{choice}" data-label="{choice.capitalize()}">{choice.capitalize()}</button></li>"""
+        for choice in REASONING_CHOICES
+    )
     html = f"""
     <html>
         <head>
@@ -324,6 +330,7 @@ async def demo() -> HTMLResponse:
                 }}
                 .messages-panel {{
                     border: 1px solid var(--border);
+                    min-height: 0;
                 }}
                 .chat-log {{
                     list-style: none;
@@ -429,7 +436,7 @@ async def demo() -> HTMLResponse:
                     flex-direction: column;
                     align-items: flex-end;
                     gap: 6px;
-                    min-width: 210px;
+                    width: 120px;
                 }}
                 .reasoning-control label {{
                     font-size: 0.72rem;
@@ -444,20 +451,21 @@ async def demo() -> HTMLResponse:
                 }}
                 .reasoning-toggle {{
                     width: 100%;
+                    min-width: 0;
                     border: 1px solid rgba(148, 163, 184, 0.5);
                     border-radius: 18px;
                     background: linear-gradient(145deg, #ffffff, #f2f6ff);
                     color: #0f172a;
                     font-size: 0.95rem;
                     font-weight: 600;
-                    padding: 10px 44px 10px 16px;
+                    padding: 8px 16px;
                     text-align: left;
                     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
                     cursor: pointer;
                     display: flex;
-                    justify-content: space-between;
                     align-items: center;
-                    gap: 12px;
+                    gap: 8px;
+                    white-space: nowrap;
                     transition: border 0.2s, box-shadow 0.2s, transform 0.2s;
                 }}
                 .reasoning-toggle:focus-visible {{
@@ -472,6 +480,12 @@ async def demo() -> HTMLResponse:
                     fill: none;
                     stroke: #475569;
                     stroke-width: 2;
+                    margin-left: auto;
+                    flex-shrink: 0;
+                }}
+                .reasoning-toggle span {{
+                    flex: 1;
+                    min-width: 0;
                 }}
                 .reasoning-menu {{
                     position: absolute;
@@ -591,13 +605,6 @@ async def demo() -> HTMLResponse:
                     margin-top: 10px;
                     font-size: 0.95rem;
                 }}
-                .status-row {{
-                    display: flex;
-                    gap: 12px;
-                    align-items: center;
-                    justify-content: space-between;
-                    flex-wrap: wrap;
-                }}
                 .link-button {{
                     border: none;
                     background: transparent;
@@ -629,11 +636,15 @@ async def demo() -> HTMLResponse:
                 }}
                 #messages-list {{
                     overflow-y: auto;
-                    flex: 1;
+                    flex: 1 1 auto;
+                    min-height: 0;
                     border-radius: 12px;
                     border: 1px solid var(--border);
                     background: linear-gradient(180deg, #fff, #f8fbff);
-                    padding: 0 12px;
+                    padding: 12px 18px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
                 }}
                 .message-card {{
                     padding: 16px 12px;
@@ -655,9 +666,16 @@ async def demo() -> HTMLResponse:
                 .message-card p {{
                     margin: 6px 0 0;
                 }}
-                .secondary-btn {{
+                .messages-footer {{
                     margin-top: 16px;
-                    align-self: flex-start;
+                    padding-top: 0;
+                    width: 100%;
+                    display: flex;
+                    gap: 12px;
+                    justify-content: flex-start;
+                    align-items: center;
+                }}
+                .secondary-btn {{
                     padding: 10px 18px;
                     border-radius: 10px;
                     border: 1px solid var(--border);
@@ -716,19 +734,15 @@ async def demo() -> HTMLResponse:
                         <div class="reasoning-control">
                             <label for="reasoning-toggle">Reasoning</label>
                             <div class="reasoning-dropdown" data-open="false">
-                                <input type="hidden" id="reasoning-effort" value="">
+                                <input type="hidden" id="reasoning-effort" value="{default_reasoning_value}">
                                 <button type="button" id="reasoning-toggle" class="reasoning-toggle" aria-haspopup="listbox" aria-controls="reasoning-menu" aria-expanded="false">
-                                    <span id="reasoning-label">Default ({default_reasoning})</span>
+                                    <span id="reasoning-label">{default_reasoning_label}</span>
                                     <svg viewBox="0 0 24 24" aria-hidden="true">
                                         <path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
                                     </svg>
                                 </button>
                                 <ul id="reasoning-menu" class="reasoning-menu" role="listbox">
-                                    <li><button type="button" class="reasoning-option active" data-value="" data-label="Default ({default_reasoning})">Default ({default_reasoning})</button></li>
-                                    <li><button type="button" class="reasoning-option" data-value="minimal" data-label="Minimal">Minimal</button></li>
-                                    <li><button type="button" class="reasoning-option" data-value="low" data-label="Low">Low</button></li>
-                                    <li><button type="button" class="reasoning-option" data-value="medium" data-label="Medium">Medium</button></li>
-                                    <li><button type="button" class="reasoning-option" data-value="high" data-label="High">High</button></li>
+{reasoning_options_html}
                                 </ul>
                             </div>
                         </div>
@@ -749,24 +763,31 @@ async def demo() -> HTMLResponse:
                                 <path d="M7 7h10v10H7z" />
                             </svg>
                         </button>
-                    </form>
-                    <div class="status-row">
-                        <div id="status" class="status">Ready. Stop a response to branch or edit earlier prompts.</div>
                         <button type="button" id="cancel-edit" class="link-button" hidden>Cancel edit</button>
+                    </form>
+                </div>
+                    <div class="panel messages-panel">
+                        <h2>Member Messages</h2>
+                        <div id="messages-list">Loading messages...</div>
+                        <div class="messages-footer">
+                            <button id="show-more" class="secondary-btn">Show more</button>
+                            <div id="messages-status" class="status status-secondary"></div>
+                        </div>
                     </div>
-                </div>
-                <div class="panel messages-panel">
-                    <h2>Member Messages</h2>
-                    <div id="messages-list">Loading messages...</div>
-                    <button id="show-more" class="secondary-btn">Show more</button>
-                    <div id="messages-status" class="status status-secondary"></div>
-                </div>
             </div>
             <script>
                 const chatLog = document.getElementById('chat-log');
                 const questionInput = document.getElementById('question-input');
                 const askForm = document.getElementById('ask-form');
                 const statusNode = document.getElementById('status');
+                let statusMessage = '';
+                const setStatus = (message) => {{
+                    statusMessage = message;
+                    if (statusNode) {{
+                        statusNode.textContent = message;
+                    }}
+                }};
+                const getStatus = () => statusMessage;
                 const messagesList = document.getElementById('messages-list');
                 const sendStopButton = document.getElementById('send-stop-button');
                 const sendStopButtonLabel = sendStopButton.querySelector('.sr-only');
@@ -904,7 +925,7 @@ async def demo() -> HTMLResponse:
                     questionInput.value = entry.content;
                     questionInput.focus();
                     cancelEditButton.hidden = false;
-                    statusNode.textContent = 'Editing previous question. Sending will discard replies after it.';
+                    setStatus('Editing previous question. Sending will discard replies after it.');
                     updateSendIntentLabel();
                     renderConversation();
                 }}
@@ -913,7 +934,7 @@ async def demo() -> HTMLResponse:
                     editingMessageId = null;
                     cancelEditButton.hidden = true;
                     if (!silent && !activeRequest) {{
-                        statusNode.textContent = 'Ready.';
+                        setStatus('Ready.');
                     }}
                     updateSendIntentLabel();
                     renderConversation();
@@ -972,7 +993,7 @@ async def demo() -> HTMLResponse:
                         return;
                     }}
                     activeRequest.controller.abort();
-                    statusNode.textContent = 'Stopping response...';
+                    setStatus('Stopping response...');
                 }}
 
                 sendStopButton.addEventListener('click', (event) => {{
@@ -1064,11 +1085,11 @@ async def demo() -> HTMLResponse:
                     const question = questionInput.value.trim();
                     const reasoningEffort = reasoningInput.value;
                     if (!question) {{
-                        statusNode.textContent = 'Enter a question first.';
+                        setStatus('Enter a question first.');
                         return;
                     }}
                     if (activeRequest) {{
-                        statusNode.textContent = 'Stop the current response before sending another prompt.';
+                        setStatus('Stop the current response before sending another prompt.');
                         return;
                     }}
                     buildConversationFor(question);
@@ -1080,7 +1101,7 @@ async def demo() -> HTMLResponse:
                     const startedAt = performance.now();
                     activeRequest = {{ controller, assistantId, startedAt }};
                     setRequestState(true);
-                    statusNode.textContent = 'Thinking...';
+                    setStatus('Thinking...');
 
                     try {{
                         const result = await askQuestion(question, reasoningEffort, controller.signal);
@@ -1090,21 +1111,22 @@ async def demo() -> HTMLResponse:
                             pending: false,
                             thinkTime: elapsed
                         }});
-                        statusNode.textContent = `Used ${{result.sources_used}} messages.`;
+                        setStatus(`Used ${{result.sources_used}} messages.`);
                     }} catch (error) {{
                         if (error.name === 'AbortError') {{
                             updateMessage(assistantId, {{ content: 'Response stopped.', pending: false }});
-                            statusNode.textContent = 'Response stopped.';
+                            setStatus('Response stopped.');
                         }} else {{
                             updateMessage(assistantId, {{ content: `Error: ${{error.message}}`, pending: false }});
-                            statusNode.textContent = 'Unable to fetch answer.';
+                            setStatus('Unable to fetch answer.');
                         }}
                     }} finally {{
                         if (activeRequest && activeRequest.assistantId === assistantId) {{
                             activeRequest = null;
                             setRequestState(false);
-                            if (!editingMessageId && !['Response stopped.', 'Unable to fetch answer.'].includes(statusNode.textContent) && !statusNode.textContent.startsWith('Used ')) {{
-                                statusNode.textContent = 'Ready.';
+                            const currentStatus = getStatus();
+                            if (!editingMessageId && !['Response stopped.', 'Unable to fetch answer.'].includes(currentStatus) && !currentStatus.startsWith('Used ')) {{
+                                setStatus('Ready.');
                             }}
                         }}
                     }}
