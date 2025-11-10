@@ -362,20 +362,31 @@ async def demo() -> HTMLResponse:
                     outline: 2px dashed rgba(37, 99, 235, 0.5);
                     background: rgba(219, 234, 254, 0.7);
                 }}
+                .chat-log li.pending p {{
+                    position: relative;
+                    color: #0f172a;
+                    overflow: hidden;
+                }}
                 .chat-log li.pending p::after {{
                     content: '';
-                    display: inline-block;
-                    width: 30px;
-                    height: 0.8em;
-                    margin-left: 8px;
-                    border-radius: 999px;
-                    background: linear-gradient(90deg, rgba(37, 99, 235, 0.1), rgba(37, 99, 235, 0.4), rgba(37, 99, 235, 0.1));
-                    animation: shimmer 1.2s ease-in-out infinite;
+                    position: absolute;
+                    inset: 0;
+                    background: linear-gradient(120deg,
+                        rgba(255, 255, 255, 0) 0%,
+                        rgba(255, 255, 255, 0.65) 45%,
+                        rgba(255, 255, 255, 0) 70%);
+                    transform: translateX(-100%);
+                    animation: textShimmer 2.2s linear infinite;
+                    mix-blend-mode: screen;
+                    filter: blur(0.5px);
                 }}
-                @keyframes shimmer {{
-                    0% {{ opacity: 0.2; }}
-                    50% {{ opacity: 1; }}
-                    100% {{ opacity: 0.2; }}
+                @keyframes textShimmer {{
+                    0% {{
+                        transform: translateX(-130%);
+                    }}
+                    100% {{
+                        transform: translateX(130%);
+                    }}
                 }}
                 .chat-log .question {{
                     align-self: flex-end;
@@ -832,10 +843,6 @@ async def demo() -> HTMLResponse:
                             actionButton.disabled = entry.id === editingMessageId;
                             actionButton.addEventListener('click', () => enterEditMode(entry.id));
                             header.appendChild(actionButton);
-                        }} else if (entry.pending) {{
-                            const state = document.createElement('span');
-                            state.textContent = 'Generating…';
-                            header.appendChild(state);
                         }}
                         if (entry.role === 'assistant' && entry.thinkTime) {{
                             const timing = document.createElement('span');
