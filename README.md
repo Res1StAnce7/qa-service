@@ -1,4 +1,4 @@
-# QA Concierge Service
+# QA Service
 
 A FastAPI application that answers concierge questions using the latest member messages. It ships with an interactive web demo, `/ask` API endpoint, and a `/messages` explorer for debugging.
 
@@ -66,11 +66,3 @@ Cloud Run will expose a URL like `https://qa-service-xxxxxx-uc.a.run.app`. Use `
 - `make docker-build` / `make docker-run`: local Docker smoke test
 - `make gcloud-build` / `make gcloud-deploy`: Cloud Run pipeline
 - `make clean`: remove the virtualenv
-
-## Troubleshooting
-- **Missing config**: ensure `/app/config/settings.yaml` exists in the image or set `QA_SERVICE_CONFIG` to a mounted secret.
-- **OpenAI errors**: check `app/llm.py` logs; the server returns a 500 with details if the OpenAI API fails.
-- **Cloud Run port errors**: the Dockerfile already uses `${PORT:-8080}`; redeploy after rebuilding if you change it.
-
-## License
-Internal/private use only (no explicit OSS license).
