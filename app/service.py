@@ -29,7 +29,9 @@ class QAService:
         self._cache_lock = asyncio.Lock()
         self._cache_ready = asyncio.Event()
 
-    async def answer_question(self, question: str) -> Tuple[str, int]:
+    async def answer_question(
+        self, question: str, *, reasoning_effort: str | None = None
+    ) -> Tuple[str, int]:
         await self._ensure_vectors_ready()
         if not self._vectorized_messages:
             return "No member messages are available at the moment.", 0
@@ -39,7 +41,9 @@ class QAService:
             question_vector, self._vectorized_messages
         )
         answer = await self._llm_client.answer(
-            question, [vector.record for vector in top_messages]
+            question,
+            [vector.record for vector in top_messages],
+            reasoning_effort=reasoning_effort,
         )
         return answer, len(top_messages)
 

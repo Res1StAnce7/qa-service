@@ -7,7 +7,7 @@ openai:
   reasoning_effort: "medium"
   verbosity: "medium"
   embedding_model: "text-embedding-3-small"
-  embedding_batch_size: 50
+  embedding_batch_size: 100
 messages_api:
   base_url: "https://november7-730026606190.europe-west1.run.app"
   skip: 0

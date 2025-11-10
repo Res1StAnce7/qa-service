@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 MESSAGE_LIST_LIMIT = 50
+REASONING_CHOICES = {"minimal", "low", "medium", "high"}
 
 
 def _serialize_message(record: MessageRecord) -> MessageSchema:
@@ -188,9 +189,27 @@ async def list_messages(
 @app.get("/ask", response_model=AnswerResponse)
 async def ask(
     question: str = Query(..., min_length=1, description="Natural language question"),
+    reasoning: str
+    | None = Query(
+        default=None,
+        description="Optional reasoning effort override (minimal|low|medium|high).",
+    ),
 ) -> AnswerResponse:
     normalized = _normalize_question(question)
-    return await _answer_question(normalized)
+    effort = _normalize_reasoning(reasoning)
+    return await _answer_question(normalized, effort)
+
+
+async def _answer_question(
+    question: str, reasoning_effort: str | None = None
+) -> AnswerResponse:
+    try:
+        answer, count = await qa_service.answer_question(
+            question, reasoning_effort=reasoning_effort
+        )
+        return AnswerResponse(answer=answer, sources_used=count)
+    except Exception as exc:  # pragma: no cover - FastAPI will handle logging
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 def _normalize_question(question: str) -> str:
@@ -202,12 +221,19 @@ def _normalize_question(question: str) -> str:
     return value
 
 
-async def _answer_question(question: str) -> AnswerResponse:
-    try:
-        answer, count = await qa_service.answer_question(question)
-        return AnswerResponse(answer=answer, sources_used=count)
-    except Exception as exc:  # pragma: no cover - FastAPI will handle logging
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+def _normalize_reasoning(value: str | None) -> str | None:
+    if value is None:
+        return None
+    lowered = value.lower()
+    if lowered not in REASONING_CHOICES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Invalid reasoning effort '{value}'. "
+                f"Choose from {', '.join(sorted(REASONING_CHOICES))}."
+            ),
+        )
+    return lowered
 
 
 @app.get("/demo", response_class=HTMLResponse)
@@ -217,6 +243,7 @@ async def demo() -> HTMLResponse:
         _serialize_message(record).model_dump(mode="json") for record in cached_messages
     ]
     safe_cache_json = json.dumps(serialized_cache).replace("</", "<\\/")
+    default_reasoning = settings.openai.reasoning_effort.capitalize()
     html = f"""
     <html>
         <head>
@@ -263,6 +290,16 @@ async def demo() -> HTMLResponse:
                 .chat-panel {{
                     border: 1px solid var(--border);
                 }}
+                .chat-header {{
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-end;
+                    gap: 16px;
+                    margin-bottom: 18px;
+                }}
+                .chat-title {{
+                    margin: 0;
+                }}
                 .messages-panel {{
                     border: 1px solid var(--border);
                 }}
@@ -282,6 +319,7 @@ async def demo() -> HTMLResponse:
                 }}
                 .chat-log li p {{
                     margin: 6px 0 0;
+                    white-space: pre-line;
                 }}
                 .chat-log li .message-header {{
                     display: flex;
@@ -298,6 +336,12 @@ async def demo() -> HTMLResponse:
                 }}
                 .chat-log li.answer .message-header span {{
                     color: #047857;
+                }}
+                .message-timing {{
+                    font-size: 0.75rem;
+                    color: #475569;
+                    margin-left: auto;
+                    text-transform: none;
                 }}
                 .message-action {{
                     border: none;
@@ -346,6 +390,98 @@ async def demo() -> HTMLResponse:
                     display: flex;
                     gap: 12px;
                     align-items: center;
+                }}
+                .reasoning-control {{
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-end;
+                    gap: 6px;
+                    min-width: 210px;
+                }}
+                .reasoning-control label {{
+                    font-size: 0.72rem;
+                    letter-spacing: 0.08em;
+                    text-transform: uppercase;
+                    color: #475569;
+                    font-weight: 600;
+                }}
+                .reasoning-dropdown {{
+                    position: relative;
+                    width: 100%;
+                }}
+                .reasoning-toggle {{
+                    width: 100%;
+                    border: 1px solid rgba(148, 163, 184, 0.5);
+                    border-radius: 18px;
+                    background: linear-gradient(145deg, #ffffff, #f2f6ff);
+                    color: #0f172a;
+                    font-size: 0.95rem;
+                    font-weight: 600;
+                    padding: 10px 44px 10px 16px;
+                    text-align: left;
+                    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+                    cursor: pointer;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    gap: 12px;
+                    transition: border 0.2s, box-shadow 0.2s, transform 0.2s;
+                }}
+                .reasoning-toggle:focus-visible {{
+                    outline: none;
+                    border-color: var(--primary);
+                    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+                    transform: translateY(-1px);
+                }}
+                .reasoning-toggle svg {{
+                    width: 16px;
+                    height: 16px;
+                    fill: none;
+                    stroke: #475569;
+                    stroke-width: 2;
+                }}
+                .reasoning-menu {{
+                    position: absolute;
+                    top: calc(100% + 8px);
+                    right: 0;
+                    width: 100%;
+                    margin: 0;
+                    padding: 8px;
+                    list-style: none;
+                    background: #fff;
+                    border-radius: 18px;
+                    border: 1px solid rgba(148, 163, 184, 0.4);
+                    box-shadow: 0 18px 30px rgba(15, 23, 42, 0.18);
+                    opacity: 0;
+                    pointer-events: none;
+                    transform: translateY(-6px);
+                    transition: opacity 0.2s ease, transform 0.2s ease;
+                    z-index: 20;
+                }}
+                .reasoning-dropdown[data-open="true"] .reasoning-menu {{
+                    opacity: 1;
+                    pointer-events: auto;
+                    transform: translateY(0);
+                }}
+                .reasoning-option {{
+                    width: 100%;
+                    border: none;
+                    background: transparent;
+                    border-radius: 14px;
+                    padding: 10px 12px;
+                    font-size: 0.95rem;
+                    font-weight: 500;
+                    text-align: left;
+                    color: #0f172a;
+                    cursor: pointer;
+                    transition: background 0.15s ease, color 0.15s ease;
+                }}
+                .reasoning-option:hover {{
+                    background: rgba(37, 99, 235, 0.08);
+                }}
+                .reasoning-option.active {{
+                    background: rgba(37, 99, 235, 0.15);
+                    color: #1d4ed8;
                 }}
                 .input-row input {{
                     flex: 1;
@@ -501,6 +637,21 @@ async def demo() -> HTMLResponse:
                 .secondary-btn.loading {{
                     background: var(--primary);
                     color: #fff;
+                    position: relative;
+                    padding-right: 36px;
+                }}
+                .secondary-btn.loading::after {{
+                    content: "";
+                    position: absolute;
+                    top: 50%;
+                    right: 12px;
+                    width: 14px;
+                    height: 14px;
+                    border-radius: 50%;
+                    border: 2px solid rgba(255, 255, 255, 0.5);
+                    border-top-color: #fff;
+                    transform: translateY(-50%);
+                    animation: spin 0.8s linear infinite;
                 }}
                 .secondary-btn:hover {{
                     background: #eef2ff;
@@ -518,12 +669,37 @@ async def demo() -> HTMLResponse:
                     50% {{ transform: scale(1.03); }}
                     100% {{ transform: scale(1); }}
                 }}
+                @keyframes spin {{
+                    0% {{ transform: translateY(-50%) rotate(0deg); }}
+                    100% {{ transform: translateY(-50%) rotate(360deg); }}
+                }}
             </style>
         </head>
         <body>
             <div class="container">
                 <div class="panel chat-panel">
-                    <h2>Ask Concierge</h2>
+                    <div class="chat-header">
+                        <h2 class="chat-title">Ask Concierge</h2>
+                        <div class="reasoning-control">
+                            <label for="reasoning-toggle">Reasoning</label>
+                            <div class="reasoning-dropdown" data-open="false">
+                                <input type="hidden" id="reasoning-effort" value="">
+                                <button type="button" id="reasoning-toggle" class="reasoning-toggle" aria-haspopup="listbox" aria-controls="reasoning-menu" aria-expanded="false">
+                                    <span id="reasoning-label">Default ({default_reasoning})</span>
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                </button>
+                                <ul id="reasoning-menu" class="reasoning-menu" role="listbox">
+                                    <li><button type="button" class="reasoning-option active" data-value="" data-label="Default ({default_reasoning})">Default ({default_reasoning})</button></li>
+                                    <li><button type="button" class="reasoning-option" data-value="minimal" data-label="Minimal">Minimal</button></li>
+                                    <li><button type="button" class="reasoning-option" data-value="low" data-label="Low">Low</button></li>
+                                    <li><button type="button" class="reasoning-option" data-value="medium" data-label="Medium">Medium</button></li>
+                                    <li><button type="button" class="reasoning-option" data-value="high" data-label="High">High</button></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
                     <ul id="chat-log" class="chat-log"></ul>
                     <form id="ask-form" class="input-row">
                         <input id="question-input" type="text" placeholder="Ask anything about the members..."
@@ -561,6 +737,12 @@ async def demo() -> HTMLResponse:
                 const messagesList = document.getElementById('messages-list');
                 const sendStopButton = document.getElementById('send-stop-button');
                 const sendStopButtonLabel = sendStopButton.querySelector('.sr-only');
+                const reasoningInput = document.getElementById('reasoning-effort');
+                const reasoningToggle = document.getElementById('reasoning-toggle');
+                const reasoningLabelNode = document.getElementById('reasoning-label');
+                const reasoningDropdown = document.querySelector('.reasoning-dropdown');
+                const reasoningMenu = document.getElementById('reasoning-menu');
+                const reasoningOptions = reasoningMenu.querySelectorAll('.reasoning-option');
                 const cancelEditButton = document.getElementById('cancel-edit');
                 const showMoreButton = document.getElementById('show-more');
                 const messagesStatus = document.getElementById('messages-status');
@@ -574,6 +756,54 @@ async def demo() -> HTMLResponse:
                 let nextMessageId = 1;
                 let editingMessageId = null;
                 let activeRequest = null;
+                const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                const formatSeconds = (seconds) => Number(seconds).toFixed(1);
+
+                function openReasoningMenu() {{
+                    reasoningDropdown.dataset.open = 'true';
+                    reasoningToggle.setAttribute('aria-expanded', 'true');
+                }}
+
+                function closeReasoningMenu() {{
+                    reasoningDropdown.dataset.open = 'false';
+                    reasoningToggle.setAttribute('aria-expanded', 'false');
+                }}
+
+                function setReasoning(value, label, button) {{
+                    reasoningInput.value = value;
+                    reasoningLabelNode.textContent = label;
+                    reasoningOptions.forEach((option) => {{
+                        option.classList.toggle('active', option === button);
+                    }});
+                    closeReasoningMenu();
+                }}
+
+                reasoningToggle.addEventListener('click', () => {{
+                    const isOpen = reasoningDropdown.dataset.open === 'true';
+                    if (isOpen) {{
+                        closeReasoningMenu();
+                    }} else {{
+                        openReasoningMenu();
+                    }}
+                }});
+
+                reasoningOptions.forEach((button) => {{
+                    button.addEventListener('click', () => {{
+                        setReasoning(button.dataset.value || '', button.dataset.label || button.textContent, button);
+                    }});
+                }});
+
+                document.addEventListener('click', (event) => {{
+                    if (!reasoningDropdown.contains(event.target)) {{
+                        closeReasoningMenu();
+                    }}
+                }});
+
+                document.addEventListener('keydown', (event) => {{
+                    if (event.key === 'Escape') {{
+                        closeReasoningMenu();
+                    }}
+                }});
 
                 function renderConversation() {{
                     chatLog.innerHTML = '';
@@ -606,6 +836,12 @@ async def demo() -> HTMLResponse:
                             const state = document.createElement('span');
                             state.textContent = 'Generating…';
                             header.appendChild(state);
+                        }}
+                        if (entry.role === 'assistant' && entry.thinkTime) {{
+                            const timing = document.createElement('span');
+                            timing.className = 'message-timing';
+                            timing.textContent = `Thought for ${{formatSeconds(entry.thinkTime)}} seconds`;
+                            header.appendChild(timing);
                         }}
 
                         li.appendChild(header);
@@ -717,9 +953,12 @@ async def demo() -> HTMLResponse:
                     }}
                 }});
 
-                async function askQuestion(question, signal) {{
-                    const url = `/ask?question=${{encodeURIComponent(question)}}`;
-                    const response = await fetch(url, {{ signal }});
+                async function askQuestion(question, effort, signal) {{
+                    const params = new URLSearchParams({{ question }});
+                    if (effort) {{
+                        params.append('reasoning', effort);
+                    }}
+                    const response = await fetch(`/ask?${{params.toString()}}`, {{ signal }});
                     if (!response.ok) {{
                         const data = await response.json().catch(() => ({{ detail: response.statusText }}));
                         throw new Error(data.detail || 'Failed to retrieve answer.');
@@ -784,7 +1023,8 @@ async def demo() -> HTMLResponse:
                     if (currentLimit >= MAX_LIMIT) return;
                     showMoreButton.disabled = true;
                     showMoreButton.classList.add('loading');
-                    showMoreButton.textContent = 'Loading...';
+                    showMoreButton.textContent = 'Loading cached messages...';
+                    await sleep(220);
                     currentLimit = Math.min(currentLimit + PAGE_SIZE, MAX_LIMIT);
                     await loadMessages({{ showSpinner: true }});
                     showMoreButton.classList.remove('loading');
@@ -793,6 +1033,7 @@ async def demo() -> HTMLResponse:
                 askForm.addEventListener('submit', async (event) => {{
                     event.preventDefault();
                     const question = questionInput.value.trim();
+                    const reasoningEffort = reasoningInput.value;
                     if (!question) {{
                         statusNode.textContent = 'Enter a question first.';
                         return;
@@ -807,13 +1048,19 @@ async def demo() -> HTMLResponse:
 
                     const assistantId = addAssistantPlaceholder();
                     const controller = new AbortController();
-                    activeRequest = {{ controller, assistantId }};
+                    const startedAt = performance.now();
+                    activeRequest = {{ controller, assistantId, startedAt }};
                     setRequestState(true);
                     statusNode.textContent = 'Thinking...';
 
                     try {{
-                        const result = await askQuestion(question, controller.signal);
-                        updateMessage(assistantId, {{ content: result.answer, pending: false }});
+                        const result = await askQuestion(question, reasoningEffort, controller.signal);
+                        const elapsed = Math.max(0.1, (performance.now() - startedAt) / 1000);
+                        updateMessage(assistantId, {{
+                            content: result.answer,
+                            pending: false,
+                            thinkTime: elapsed
+                        }});
                         statusNode.textContent = `Used ${{result.sources_used}} messages.`;
                     }} catch (error) {{
                         if (error.name === 'AbortError') {{

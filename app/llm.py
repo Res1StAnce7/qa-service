@@ -33,13 +33,13 @@ class LLMClient:
             "from the messages, reply exactly with: 'The information is unavailable.'\n\n"
             "Do not include or speculate about information outside the provided messages.\n\n"
             "Ensure the response is concise, relevant, and well-formatted for readability "
-            "(e.g., use bullet points or short paragraphs when appropriate)."
         )
 
-    def _invoke(self, question: str, context: str) -> str:
+    def _invoke(self, question: str, context: str, reasoning_effort: str | None) -> str:
+        effort = reasoning_effort or self._settings.reasoning_effort
         completion = self._client.responses.create(
             model=self._settings.model,
-            reasoning={"effort": self._settings.reasoning_effort},
+            reasoning={"effort": effort},
             text={"verbosity": self._settings.verbosity},
             input=[
                 {"role": "system", "content": self._system_prompt},
@@ -54,10 +54,18 @@ class LLMClient:
         choice = completion.output_text
         return choice if choice else "No answer returned."
 
-    async def answer(self, question: str, messages: Sequence[MessageRecord]) -> str:
+    async def answer(
+        self,
+        question: str,
+        messages: Sequence[MessageRecord],
+        *,
+        reasoning_effort: str | None = None,
+    ) -> str:
         context = _format_context(messages)
         try:
-            return await asyncio.to_thread(self._invoke, question, context)
+            return await asyncio.to_thread(
+                self._invoke, question, context, reasoning_effort
+            )
         except (APIConnectionError, APIStatusError) as exc:
             raise RuntimeError(f"OpenAI request failed: {exc}") from exc
 
