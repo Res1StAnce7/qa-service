@@ -1,9 +1,9 @@
 app:
   name: QA Service
-  public_base_url: " "
+  public_base_url: "https://qa-service-780002810623.us-central1.run.app/"
 app_name: QA Service
 openai:
-  api_key: "sk-your-openai-key"
+  api_key: ""
   model: "gpt-5-mini-2025-08-07"
   temperature: 1
   max_output_tokens: 300

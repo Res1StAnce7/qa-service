@@ -150,7 +150,7 @@ async def home() -> HTMLResponse:
                     <div class="card">
                         <h3>Live Demo</h3>
                         <p>Try the split-screen UI to see prompts, responses, cached snippets, and reasoning-effort controls.</p>
-                        <a href="/demo">Open demo →</a>
+                        <a href="/demo" target="_blank" rel="noreferrer noopener">Open demo →</a>
                     </div>
                 </section>
 
